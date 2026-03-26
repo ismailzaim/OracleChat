@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OracleChat — AI-Powered Oracle Database Interface</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --oracle-red:   #c74634;
+      --oracle-dark:  #1a1a2e;
+      --bg:           #f8f9fa;
+      --surface:      #ffffff;
+      --border:       #e2e8f0;
+      --text:         #1e293b;
+      --text-muted:   #64748b;
+      --radius:       12px;
+      --shadow:       0 1px 3px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.06);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--oracle-dark);
+      padding: 0 32px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: white;
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.3px;
+    }
+    .logo-dot {
+      width: 10px; height: 10px;
+      background: var(--oracle-red);
+      border-radius: 50%;
+    }
+    .header-badges {
+      display: flex;
+      gap: 8px;
+    }
+    .badge {
+      font-size: 11px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-weight: 500;
+    }
+    .badge-red   { background: rgba(199,70,52,0.2);  color: #ff8a7a; }
+    .badge-blue  { background: rgba(99,179,237,0.2); color: #90cdf4; }
+    .badge-green { background: rgba(72,187,120,0.2); color: #9ae6b4; }
+
+    /* ── Main layout ── */
+    main {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 32px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* ── Input card ── */
+    .input-card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      padding: 24px;
+    }
+    .input-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 12px;
+    }
+    .input-row {
+      display: flex;
+      gap: 12px;
+    }
+    #question {
+      flex: 1;
+      padding: 12px 16px;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      font-size: 15px;
+      font-family: inherit;
+      color: var(--text);
+      background: var(--bg);
+      transition: border-color 0.15s;
+      outline: none;
+    }
+    #question:focus { border-color: var(--oracle-red); }
+    #question::placeholder { color: var(--text-muted); }
+
+    #ask-btn {
+      padding: 12px 28px;
+      background: var(--oracle-red);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+      white-space: nowrap;
+    }
+    #ask-btn:hover   { opacity: 0.9; }
+    #ask-btn:active  { transform: scale(0.98); }
+    #ask-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── Example questions ── */
+    .examples {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+    .example-chip {
+      font-size: 12px;
+      padding: 5px 12px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      cursor: pointer;
+      color: var(--text-muted);
+      transition: all 0.15s;
+    }
+    .example-chip:hover {
+      background: var(--oracle-red);
+      color: white;
+      border-color: var(--oracle-red);
+    }
+
+    /* ── Loading state ── */
+    #loading {
+      display: none;
+      align-items: center;
+      gap: 12px;
+      padding: 20px 24px;
+      background: var(--surface);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid var(--border);
+      border-top-color: var(--oracle-red);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Error card ── */
+    #error-card {
+      display: none;
+      padding: 16px 20px;
+      background: #fff5f5;
+      border: 1px solid #fed7d7;
+      border-radius: var(--radius);
+      color: #c53030;
+      font-size: 14px;
+    }
+
+    /* ── Result card ── */
+    #result-card {
+      display: none;
+      background: var(--surface);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .result-header {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .result-question {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .result-meta {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+    .row-count-badge {
+      font-size: 12px;
+      padding: 4px 10px;
+      background: rgba(199,70,52,0.1);
+      color: var(--oracle-red);
+      border-radius: 20px;
+      font-weight: 600;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    /* ── Explanation ── */
+    .explanation {
+      padding: 16px 24px;
+      background: #f0f9ff;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+      color: #0369a1;
+      line-height: 1.6;
+    }
+
+    /* ── Chart area ── */
+    .chart-area {
+      padding: 24px;
+      border-bottom: 1px solid var(--border);
+    }
+    .chart-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .chart-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .chart-type-btns {
+      display: flex;
+      gap: 6px;
+    }
+    .chart-type-btn {
+      padding: 4px 12px;
+      font-size: 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg);
+      cursor: pointer;
+      color: var(--text-muted);
+      transition: all 0.15s;
+    }
+    .chart-type-btn.active, .chart-type-btn:hover {
+      background: var(--oracle-red);
+      color: white;
+      border-color: var(--oracle-red);
+    }
+    #chart-container {
+      position: relative;
+      height: 300px;
+    }
+
+    /* ── SQL panel ── */
+    .sql-panel {
+      border-bottom: 1px solid var(--border);
+    }
+    .sql-toggle {
+      width: 100%;
+      padding: 12px 24px;
+      background: none;
+      border: none;
+      text-align: left;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.1s;
+    }
+    .sql-toggle:hover { background: var(--bg); }
+    .sql-toggle .arrow { transition: transform 0.2s; }
+    .sql-toggle.open .arrow { transform: rotate(90deg); }
+    .sql-code {
+      display: none;
+      margin: 0 24px 16px;
+      padding: 16px;
+      background: #1e293b;
+      color: #e2e8f0;
+      border-radius: 8px;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    /* ── Data table ── */
+    .table-area { padding: 0 24px 24px; }
+    .table-scroll { overflow-x: auto; margin-top: 16px; }
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .data-table th {
+      padding: 10px 14px;
+      text-align: left;
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      background: var(--bg);
+      border-bottom: 2px solid var(--border);
+      white-space: nowrap;
+    }
+    .data-table td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+    }
+    .data-table tr:last-child td { border-bottom: none; }
+    .data-table tr:hover td { background: var(--bg); }
+    .data-table td.numeric {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      font-family: 'Consolas', monospace;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-dot"></div>
+    OracleChat
+  </div>
+  <div class="header-badges">
+    <span class="badge badge-red">Oracle 19c</span>
+    <span class="badge badge-blue">Gemini AI</span>
+    <span class="badge badge-green">RAG</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- Input card -->
+  <div class="input-card">
+    <div class="input-label">Ask a question about the database</div>
+    <div class="input-row">
+      <input
+        type="text"
+        id="question"
+        placeholder="e.g. Which city has the most orders?"
+        autocomplete="off"
+      />
+      <button id="ask-btn" onclick="ask()">Ask</button>
+    </div>
+    <div class="examples">
+      <span class="example-chip" onclick="setQ(this)">Top 5 customers by revenue</span>
+      <span class="example-chip" onclick="setQ(this)">Revenue by product category</span>
+      <span class="example-chip" onclick="setQ(this)">Monthly revenue trend</span>
+      <span class="example-chip" onclick="setQ(this)">Most popular payment method</span>
+      <span class="example-chip" onclick="setQ(this)">Orders by city</span>
+      <span class="example-chip" onclick="setQ(this)">Top 10 best selling products</span>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div id="loading">
+    <div class="spinner"></div>
+    <span>Generating SQL and querying Oracle 19c...</span>
+  </div>
+
+  <!-- Error -->
+  <div id="error-card"></div>
+
+  <!-- Result -->
+  <div id="result-card">
+
+    <div class="result-header">
+      <div>
+        <div class="result-question" id="result-question"></div>
+        <div class="result-meta" id="result-meta"></div>
+      </div>
+      <div class="row-count-badge" id="row-count-badge"></div>
+    </div>
+
+    <div class="explanation" id="explanation"></div>
+
+    <div class="chart-area">
+      <div class="chart-toolbar">
+        <span class="chart-title">Visualisation</span>
+        <div class="chart-type-btns">
+          <button class="chart-type-btn" onclick="switchChart('bar')">Bar</button>
+          <button class="chart-type-btn" onclick="switchChart('line')">Line</button>
+          <button class="chart-type-btn" onclick="switchChart('pie')">Pie</button>
+        </div>
+      </div>
+      <div id="chart-container">
+        <canvas id="myChart"></canvas>
+      </div>
+    </div>
+
+    <div class="sql-panel">
+      <button class="sql-toggle" id="sql-toggle" onclick="toggleSQL()">
+        <span class="arrow">▶</span> Generated SQL
+      </button>
+      <pre class="sql-code" id="sql-code"></pre>
+    </div>
+
+    <div class="table-area">
+      <div class="input-label" style="padding-top:16px">Raw results</div>
+      <div class="table-scroll">
+        <table class="data-table" id="data-table"></table>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<script>
+  let chartInstance   = null;
+  let currentData     = null;
+  let currentQuestion = '';
+
+  // Fill input from example chip
+  function setQ(el) {
+    document.getElementById('question').value = el.textContent;
+    ask();
+  }
+
+  // Allow Enter key to submit
+  document.getElementById('question').addEventListener('keydown', e => {
+    if (e.key === 'Enter') ask();
+  });
+
+  async function ask() {
+    const question = document.getElementById('question').value.trim();
+    if (!question) return;
+    currentQuestion = question;
+
+    // UI state: loading
+    document.getElementById('ask-btn').disabled = true;
+    document.getElementById('loading').style.display    = 'flex';
+    document.getElementById('error-card').style.display = 'none';
+    document.getElementById('result-card').style.display = 'none';
+
+    try {
+      const res  = await fetch('/query', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ question }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        showError(data.error || 'An unexpected error occurred.');
+        return;
+      }
+      showResult(data);
+
+    } catch (e) {
+      showError('Network error — is the server running?');
+    } finally {
+      document.getElementById('ask-btn').disabled = false;
+      document.getElementById('loading').style.display = 'none';
+    }
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('error-card');
+    el.textContent = '⚠ ' + msg;
+    el.style.display = 'block';
+  }
+
+  function showResult(data) {
+    currentData = data;
+
+    // Header
+    document.getElementById('result-question').textContent = data.question;
+    document.getElementById('result-meta').textContent =
+      `Oracle 19c · ${data.row_count} row${data.row_count !== 1 ? 's' : ''}`;
+    document.getElementById('row-count-badge').textContent =
+      `${data.row_count} rows`;
+
+    // Explanation
+    document.getElementById('explanation').textContent = data.explanation;
+
+    // Chart
+    renderChart(data.chart_type, data.chart_data);
+
+    // SQL
+    document.getElementById('sql-code').textContent = data.sql;
+
+    // Table
+    renderTable(data.columns, data.table_data);
+
+    document.getElementById('result-card').style.display = 'block';
+  }
+
+  function renderChart(type, chartData) {
+    if (chartInstance) {
+      chartInstance.destroy();
+      chartInstance = null;
+    }
+
+    // Highlight active button
+    document.querySelectorAll('.chart-type-btn').forEach(b => {
+      b.classList.toggle('active', b.textContent.toLowerCase() === type);
+    });
+
+    const ctx = document.getElementById('myChart').getContext('2d');
+    chartInstance = new Chart(ctx, {
+      type: type,
+      data: chartData,
+      options: {
+        responsive:          true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: type === 'pie',
+            position: 'bottom',
+          },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const val = ctx.parsed.y ?? ctx.parsed;
+                return ' ' + (typeof val === 'number'
+                  ? val.toLocaleString('en-US', { maximumFractionDigits: 2 })
+                  : val);
+              }
+            }
+          }
+        },
+        scales: type === 'pie' ? {} : {
+          x: {
+            grid: { display: false },
+            ticks: { font: { size: 12 } }
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: 'rgba(0,0,0,0.05)' },
+            ticks: {
+              font: { size: 12 },
+              callback: val => val >= 1000
+                ? (val/1000).toFixed(0) + 'k'
+                : val
+            }
+          }
+        }
+      }
+    });
+  }
+
+  function switchChart(type) {
+    if (!currentData) return;
+    renderChart(type, currentData.chart_data);
+  }
+
+  function toggleSQL() {
+    const code    = document.getElementById('sql-code');
+    const toggle  = document.getElementById('sql-toggle');
+    const visible = code.style.display === 'block';
+    code.style.display = visible ? 'none' : 'block';
+    toggle.classList.toggle('open', !visible);
+  }
+
+  function renderTable(columns, rows) {
+    const table = document.getElementById('data-table');
+
+    // Header
+    const thead = document.createElement('thead');
+    const hr    = document.createElement('tr');
+    columns.forEach(col => {
+      const th = document.createElement('th');
+      th.textContent = col.replace(/_/g, ' ');
+      hr.appendChild(th);
+    });
+    thead.appendChild(hr);
+
+    // Body
+    const tbody = document.createElement('tbody');
+    rows.forEach(row => {
+      const tr = document.createElement('tr');
+      columns.forEach(col => {
+        const td  = document.createElement('td');
+        const val = row[col];
+        td.textContent = val !== null && val !== undefined ? val : '—';
+        // Right-align numbers
+        if (typeof val === 'number') td.classList.add('numeric');
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+
+    table.innerHTML = '';
+    table.appendChild(thead);
+    table.appendChild(tbody);
+  }
+</script>
+
+</body>
+</html>
