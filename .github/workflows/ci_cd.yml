@@ -1,0 +1,60 @@
+# .github/workflows/ci_cd.yml
+#
+# OracleChat CI pipeline.
+# Triggers: every push and every pull request to main.
+#
+# Steps:
+#   1. Checkout code
+#   2. Set up Python 3.11
+#   3. Install dependencies
+#   4. Run linter (flake8)
+#   5. Run test suite (pytest)
+#
+# Oracle and Gemini are mocked in tests — no real credentials needed.
+
+name: OracleChat CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Lint with flake8
+        run: |
+          pip install flake8
+          # Stop build on syntax errors or undefined names
+          flake8 app/ tests/ --count --select=E9,F63,F7,F82 --show-source
+          # Warn on style issues but don't fail the build
+          flake8 app/ tests/ --count --max-line-length=100 --exit-zero
+
+      - name: Run tests
+        env:
+          # Provide dummy values — tests mock all external services
+          FLASK_SECRET_KEY: ci-test-secret
+          ORACLE_USER: test
+          ORACLE_PASSWORD: test
+          ORACLE_DSN: localhost/TEST
+          ORACLE_POOL_MIN: "1"
+          ORACLE_POOL_MAX: "2"
+          GEMINI_API_KEY: test-key
+        run: |
+          python -m pytest tests/ -v --tb=short
