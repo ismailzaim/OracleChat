@@ -23,9 +23,6 @@ def create_app() -> Flask:
     app.pool = pool
 
     # ── Auto-discover schema at startup ───────────────────────
-    # We push an app context manually here so discover_schema()
-    # can call current_app.pool before the first request arrives.
-    # Without this, current_app is not available outside a request.
     with app.app_context():
         try:
             from app.rag import discover_schema

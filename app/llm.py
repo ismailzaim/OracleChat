@@ -7,12 +7,13 @@ from flask import current_app
 
 _client = None
 
+
 def _get_client():
-    """Lazy-initialize the Gemini client once per process."""
     global _client
     if _client is None:
         _client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY", ""))
     return _client
+
 
 MODEL = "gemini-2.5-flash"
 
@@ -43,7 +44,6 @@ class LLMError(Exception):
 
 
 def _extract_sql(raw: str) -> str:
-    """Strip markdown, preamble, and semicolons from Gemini response."""
     text = raw.strip()
     text = re.sub(r'```(?:sql)?\s*', '', text, flags=re.IGNORECASE)
     text = text.replace('```', '')
@@ -52,7 +52,6 @@ def _extract_sql(raw: str) -> str:
     if not match:
         raise LLMError(f"No SELECT found in response: {text[:200]}")
     text = text[match.start():]
-
     text = text.rstrip().rstrip(';').rstrip()
 
     lines = text.split('\n')
@@ -90,6 +89,95 @@ def generate_sql(question: str, context: str) -> str:
     sql = _extract_sql(raw)
     current_app.logger.info(f"Extracted SQL: {sql[:200]}")
     return sql
+
+
+def generate_sql_with_history(
+    question: str,
+    context: str,
+    history: list,
+) -> str:
+    """
+    Generate SQL taking previous questions into account.
+    history = [{"question": "...", "sql": "..."}, ...]
+    """
+    client = _get_client()
+
+    history_text = ""
+    if history:
+        recent = history[-3:]
+        history_text = "\n=== CONVERSATION HISTORY ===\n"
+        for i, turn in enumerate(recent, 1):
+            history_text += (
+                f"Turn {i}:\n"
+                f"  Question: {turn['question']}\n"
+                f"  SQL: {turn['sql']}\n\n"
+            )
+        history_text += (
+            "Use this history to understand references like "
+            "'their', 'those', 'same', 'also', 'and'. "
+            "Build on previous queries when the new question refers to them.\n"
+        )
+
+    prompt = _PROMPT_TEMPLATE.format(
+        context=context + history_text,
+        question=question,
+    )
+
+    response = client.models.generate_content(
+        model=MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            temperature=0.1,
+            max_output_tokens=1024,
+        ),
+    )
+
+    return _extract_sql(response.text)
+
+
+def generate_sql_with_retry(
+    question: str,
+    context: str,
+    columns: list,
+    rows: list,
+) -> tuple:
+    """
+    If the first SQL attempt returned zero rows, retry with a
+    corrected prompt that emphasises valid column values.
+    Returns (sql, columns, rows).
+    """
+    from app.executor import run_query, ExecutorError
+    import oracledb
+
+    if rows:
+        return context, columns, rows
+
+    current_app.logger.info(
+        "Zero rows returned — attempting retry with corrected context."
+    )
+
+    retry_addition = """
+=== IMPORTANT: PREVIOUS ATTEMPT RETURNED ZERO ROWS ===
+Your previous SQL returned zero rows.
+This usually means a filter value was wrong (wrong case, wrong spelling).
+Check the valid values listed for each column above and use EXACTLY
+those values in your WHERE clause — including correct uppercase.
+Try a different approach.
+""".strip()
+
+    retry_context = context + "\n\n" + retry_addition
+
+    try:
+        retry_sql    = generate_sql(question, retry_context)
+        retry_result = run_query(retry_sql)
+        return (
+            retry_sql,
+            retry_result["columns"],
+            retry_result["rows"],
+        )
+    except (ExecutorError, oracledb.Error, LLMError) as e:
+        current_app.logger.warning(f"Retry also failed: {e}")
+        return context, columns, rows
 
 
 def generate_explanation(question: str, sql: str, row_count: int) -> str:

@@ -3,10 +3,6 @@
 # Static configuration for OracleChat — reusable across ANY Oracle schema.
 # Table and column definitions are no longer hardcoded here.
 # They are discovered at runtime by rag.discover_schema().
-#
-# This file contains only:
-#   1. ORACLE_RULES  — syntax rules injected into every Gemini prompt
-#   2. SAMPLE_QUERIES — few-shot examples (updated dynamically after discovery)
 
 ORACLE_RULES = [
     "Use Oracle 19c SQL syntax only. Do NOT use MySQL or PostgreSQL syntax.",
@@ -21,9 +17,6 @@ ORACLE_RULES = [
     "All joins must use explicit JOIN ... ON syntax, never implicit comma joins.",
 ]
 
-# These are generic examples that work as style references
-# regardless of the specific schema being queried.
-# They teach the LLM: correct JOIN style, FETCH FIRST, TO_CHAR, GROUP BY.
 SAMPLE_QUERIES = [
     {
         "question": "How many rows are in each table?",
