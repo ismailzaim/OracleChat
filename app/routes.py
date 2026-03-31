@@ -17,7 +17,25 @@ import oracledb
 
 main = Blueprint("main", __name__)
 
-
+@main.route("/schema")
+def schema():
+    """
+    Returns the auto-discovered schema as JSON.
+    Useful for debugging and for users to verify the app
+    has correctly read their database structure.
+    """
+    schema_cache = getattr(current_app, "schema_cache", {})
+    summary = {}
+    for table, meta in schema_cache.items():
+        summary[table] = {
+            "columns":    [c["name"] for c in meta["columns"]],
+            "row_count":  meta["row_count"],
+            "fk_count":   len(meta["foreign_keys"]),
+        }
+    return jsonify({
+        "tables_discovered": len(summary),
+        "schema": summary,
+    }), 200
 @main.route("/")
 def index():
     """Serve the chat UI."""
